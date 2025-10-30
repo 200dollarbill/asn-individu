@@ -1,12 +1,15 @@
 import numpy as np
 from scipy import signal as sg
 
+# credits to https://github.com/antimattercorrade/Pan_Tompkins_QRS_Detection
+
 class Pan_Tompkins_QRS():
   """
   A class that implements the signal processing steps of the Pan-Tompkins algorithm.
   This includes band-pass filtering, differentiation, squaring, and moving window integration.
   """
   
+
   def band_pass_filter(self, signal):
     """
     Band Pass Filter
@@ -129,11 +132,10 @@ class HeartRate():
   """
   def __init__(self, raw_signal, mwin_signal, bpass_signal, samp_freq):
     """
-    Initialize Variables
-    :param raw_signal: The original, unprocessed ECG signal
-    :param mwin_signal: The signal after moving window integration
-    :param bpass_signal: The signal after band-pass filtering
-    :param samp_freq: The sampling frequency of the signals
+    :param raw_signal: ecg signal
+    :param mwin_signal: window integration
+    :param bpass_signal: bpf  out
+    :param samp_freq: fs
     """
     self.RR1, self.RR2, self.probable_peaks, self.r_locs, self.peaks, self.result = ([] for _ in range(6))
     self.SPKI, self.NPKI, self.Threshold_I1, self.Threshold_I2 = (0.0 for _ in range(4))

@@ -23,13 +23,13 @@ page_dict = {}
 
 
 # pan tompkins algorithm for rr interval finding
-p1 = st.Page("pages/page1.py", title="Pan Tompkins algorithm application")
+p1 = st.Page("pages/page1.py", title="Input and RR Peak Detection")
 # Segmenting and lag adjusment
 p2 = st.Page("pages/page2.py", title="Segmenting")
 # CWT analysis
-p3 = st.Page("pages/page3.py", title="Vasometric Activity Signal")
+p3 = st.Page("pages/page3.py", title="CWT Analysis")
 # magnitude thresholding and COG caluclation
-p4 = st.Page("pages/page4.py", title="DFT/FFT")
+p4 = st.Page("pages/page4.py", title="COG Calculation")
 
 
 TDPage = [p1,p2]
