@@ -48,7 +48,6 @@ for j in range(1, scalecount + 1):
         opacity=0.4
     ))
 
-    # Update layout for titles and labels
     fig.update_layout(
         title=f"Hasil DWT Skala {j}",
         xaxis_title='Time (s)',
@@ -58,5 +57,6 @@ for j in range(1, scalecount + 1):
         margin=dict(t=50, b=40, l=40, r=20)
     )
 
-    # Use Streamlit to display the Plotly figure
     st.plotly_chart(fig, use_container_width=True)
+
+handler.save(time,w2fb[7], filename="dwt8")
