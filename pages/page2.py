@@ -2,44 +2,142 @@ import streamlit as st
 import numpy as np
 from deps import handler
 import plotly.graph_objects as go
+import pywt
+from scipy.signal import find_peaks
 
+# --- CWT Processing Function ---
+def perform_cwt_analysis(signal_data, fs):
+    """
+    Performs CWT on the signal and returns the coefficients and corresponding frequencies.
+    """
+    # Using a wider range of scales for better frequency resolution
+    scales = np.arange(1, 256)
+    # Complex Morlet wavelet is excellent for time-frequency analysis
+    wavelet_name = 'cmor1.5-1.0' 
 
-fig = go.Figure()
+    # Perform the Continuous Wavelet Transform
+    coeffs, freqs = pywt.cwt(signal_data, scales, wavelet_name, sampling_period=1.0/fs)
+    
+    # We work with the magnitude of the complex coefficients
+    cwt_magnitude = np.abs(coeffs)
+    
+    return cwt_magnitude, freqs
 
+# --- Main App ---
 
 st.set_page_config(layout="wide")
-if 'show_cwt' not in st.session_state:
-    st.session_state.show_cwt = False
+
+# Initialize session state variables
 if 'show_input' not in st.session_state:
     st.session_state.show_input = False
+if 'cwt_results' not in st.session_state:
+    st.session_state.cwt_results = None
+if 'pcg_data' not in st.session_state:
+    st.session_state.pcg_data = None
+
+st.title("Interactive PCG Analysis with CWT")
 
 with st.form(key='input'):
-    name = st.text_input("Input Thresholded Data Name")
-    input = st.form_submit_button(label="Load Data")
-    clear = st.form_submit_button(label="Clear")
-if input or st.session_state.show_input:
-    pcg=handler.load(f"data/{name}PCG")
-    ecg=handler.load(f"data/{name}ECG")
-    
+    name = st.text_input("Input Thresholded Data Name", "a0001")
+    col1, col2 = st.columns(2)
+    with col1:
+        input_button = st.form_submit_button(label="Load Data")
+    with col2:
+        clear_button = st.form_submit_button(label="Clear All")
 
+if input_button:
+    st.session_state.show_input = True
+    st.session_state.cwt_results = None # Reset CWT on new data load
+    st.session_state.pcg_data = handler.load(f"data/{name}PCG")
+    st.session_state.ecg_data = handler.load(f"data/{name}ECG")
+
+if st.session_state.show_input:
+    pcg = st.session_state.pcg_data
+    ecg = st.session_state.ecg_data
+    
     pcgtime = pcg.time
-    # st.write(len(pcgtime))
-    len = len(pcgtime)
     pcgval = pcg.value
     ecgtime = ecg.time
     ecgval = ecg.value
-    
-    fig.data=[]
-    fig.add_trace(go.Scatter(x=pcgtime, y=pcgval, mode='lines', line=dict(color='rgba(255, 176, 0, 0.8)', width=0.8)))
-    fig.add_trace(go.Scatter(x=ecgtime, y=ecgval, mode='lines', line=dict(color='rgba(33, 185, 33, 0.8)', width=0.8)))
-    fig.update_layout(title='Thresholded result',height=500, width=1200)
-    
-    st.plotly_chart(fig)
+    fs = 2000
 
-    st.write("work")
-if clear:
-    st.session_state.show_cwt = False
-    st.session_state.show_input = False
+    st.subheader("Loaded Input Signals")
+    fig_input = go.Figure()
+    fig_input.add_trace(go.Scatter(x=pcgtime, y=pcgval, name='PCG Signal', mode='lines', line=dict(color='rgba(255, 176, 0, 0.8)')))
+    fig_input.add_trace(go.Scatter(x=ecgtime, y=ecgval, name='ECG Signal', mode='lines', line=dict(color='rgba(33, 185, 33, 0.8)')))
+    fig_input.update_layout(title='Loaded ECG & PCG Data', height=400)
+    st.plotly_chart(fig_input, use_container_width=True)
+
+    st.markdown("---")
+    st.subheader("Continuous Wavelet Transform (CWT) for PCG Analysis")
+    
+    if st.button("Apply CWT to PCG Signal"):
+        with st.spinner("Performing CWT analysis... This may take a moment."):
+            cwt_magnitude, freqs = perform_cwt_analysis(pcgval, fs)
+            st.session_state.cwt_results = {'magnitude': cwt_magnitude, 'freqs': freqs}
+
+    if st.session_state.cwt_results is not None:
+        cwt_mag = st.session_state.cwt_results['magnitude']
+        cwt_freqs = st.session_state.cwt_results['freqs']
+
+        threshold_percent = st.slider(
+            "Magnitude Threshold (%)", 
+            min_value=0, max_value=100, value=85,
+            help="Adjust the threshold to highlight high-energy areas in the scalogram and refine peak detection."
+        )
+        
+        # Calculate the actual threshold value from the percentage of the max magnitude
+        threshold_value = np.percentile(cwt_mag, threshold_percent)
+
+        # --- Interactive CWT Scalogram with Contour Overlay ---
+        st.markdown("#### CWT Scalogram with Threshold Contour")
+        fig_cwt = go.Figure()
+        
+        # 1. Base Heatmap
+        fig_cwt.add_trace(go.Heatmap(
+            z=cwt_mag, x=pcgtime, y=cwt_freqs,
+            colorscale='Jet', colorbar=dict(title='Magnitude')
+        ))
+        
+        # 2. Interactive Contour Overlay
+        fig_cwt.add_trace(go.Contour(
+            z=cwt_mag, x=pcgtime, y=cwt_freqs,
+            contours_coloring='lines',
+            line_color='white',
+            line_width=2,
+            showscale=False,
+            contours=dict(
+                start=threshold_value,
+                end=threshold_value,
+                size=0 # This ensures only one line is drawn at the threshold
+            )
+        ))
+        
+        fig_cwt.update_layout(
+            title='CWT Scalogram with Interactive Threshold Contour',
+            xaxis_title='Time (s)', yaxis_title='Frequency (Hz)',
+            yaxis=dict(type='log')
+        )
+        st.plotly_chart(fig_cwt, use_container_width=True)
+
+        # --- Peak Detection based on the same threshold ---
+        st.markdown("#### PCG Signal with Detected Peaks")
+        freq_band = (cwt_freqs >= 20) & (cwt_freqs <= 150)
+        energy_signal = np.sum(cwt_mag[freq_band, :], axis=0)
+        
+        peak_height_threshold = np.percentile(energy_signal, threshold_percent)
+        peaks, _ = find_peaks(energy_signal, height=peak_height_threshold, distance=fs*0.1)
+
+        st.write(f"Detected **{len(peaks)}** heart sound peaks with the current {threshold_percent}% threshold.")
+
+        fig_peaks = go.Figure()
+        fig_peaks.add_trace(go.Scatter(x=pcgtime, y=pcgval, name='PCG Signal', mode='lines', line=dict(color='rgba(255, 176, 0, 0.7)')))
+        fig_peaks.add_trace(go.Scatter(x=pcgtime[peaks], y=pcgval[peaks], name='Detected S1/S2 Peaks', mode='markers',
+                                       marker=dict(color='red', size=10, symbol='x')))
+        fig_peaks.update_layout(title='PCG Signal with Peaks Detected from CWT Energy', height=400)
+        st.plotly_chart(fig_peaks, use_container_width=True)
+
+if clear_button:
+    for key in st.session_state.keys():
+        del st.session_state[key]
     st.rerun()
-
-
