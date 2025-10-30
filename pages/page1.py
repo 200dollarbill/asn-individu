@@ -11,12 +11,17 @@ fig = go.Figure()
 pcgY=np.arange(1)
 cutecgval= np.arange(1)
 cutecgtime=np.arange(1)
+cutpcgval= np.arange(1)
+cutpcgtime=np.arange(1)
+
 
 st.set_page_config(layout="wide")
 if 'show_threshold' not in st.session_state:
     st.session_state.show_threshold = False
 if 'show_input' not in st.session_state:
     st.session_state.show_input = False
+if 'thresholded' not in st.session_state:
+    st.session_state.thresholded = False
 
 with st.form(key='input'):
     name = st.text_input("Input Data","4")
@@ -113,18 +118,24 @@ if st.session_state.show_threshold:
         threshold = st.slider(label="Threshold (seconds)", min_value=float(0), max_value=len(pcgY)/fs,value=(0.0,2.0))        
         cut = st.form_submit_button(label="Threshold")
         save = st.form_submit_button(label="Plot")
-        savedname = st.text_input(label="Saved cut File Name")
-    if cut:       
+        savedname = st.text_input(label="Saved cut File Name (+ECG/PCG)")
+    if cut or st.session_state.thresholded:       
         cutecgtime = ecgtime[int(threshold[0]*fs):int(threshold[1]*fs)]
+        cutecgtime = cutecgtime-int(threshold[0]*fs)
         cutecgval = ecgval[int(threshold[0]*fs):int(threshold[1]*fs)]
-        fig = go.Figure()
-        
+        cutpcgtime = pcgtime[int(threshold[0]*fs):int(threshold[1]*fs)]
+        cutpcgtime = cutpcgtime-int(threshold[0]*fs)
+        cutpcgval = pcgval[int(threshold[0]*fs):int(threshold[1]*fs)]    
+        fig.data = []
+     
         fig.add_trace(go.Scatter(x=cutecgtime/fs, y=cutecgval, mode='lines', line=dict(color='rgba(255, 176, 0, 0.8)', width=0.8)))
         fig.update_layout(title='Thresholded result',height=500, width=1200)
         st.plotly_chart(fig)
+        st.session_state.thresholded = True
     if save:
-        handler.save(cutecgtime,cutecgval,savedname)
-
+        st.write(cutecgtime)
+        handler.save(cutecgtime,cutecgval,f"data/{savedname}ECG")
+        handler.save(cutpcgtime,cutpcgval/6000,f"data/{savedname}PCG")
 # print("refresh")
 
 
