@@ -5,29 +5,18 @@ import plotly.graph_objects as go
 import pywt
 from scipy.signal import find_peaks
 
-# --- CWT Processing Function ---
 def perform_cwt_analysis(signal_data, fs):
-    """
-    Performs CWT on the signal and returns the coefficients and corresponding frequencies.
-    """
-    # Using a wider range of scales for better frequency resolution
     scales = np.arange(1, 256)
-    # Complex Morlet wavelet is excellent for time-frequency analysis
     wavelet_name = 'cmor1.5-1.0' 
-
-    # Perform the Continuous Wavelet Transform
     coeffs, freqs = pywt.cwt(signal_data, scales, wavelet_name, sampling_period=1.0/fs)
     
-    # We work with the magnitude of the complex coefficients
     cwt_magnitude = np.abs(coeffs)
     
     return cwt_magnitude, freqs
 
-# --- Main App ---
 
 st.set_page_config(layout="wide")
 
-# Initialize session state variables
 if 'show_input' not in st.session_state:
     st.session_state.show_input = False
 if 'cwt_results' not in st.session_state:
