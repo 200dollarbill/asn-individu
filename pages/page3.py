@@ -4,10 +4,9 @@ from deps import handler
 import plotly.graph_objects as go
 from ft import STFT_LIB, STFTConfigurator
 from scipy.signal.windows import hann
-
-
-
-
+from scipy.ndimage import label
+from scipy.signal import find_peaks
+from scipy.ndimage import label
 
 with st.form(key='input'):
     name = st.text_input("Input Thresholded Data Name", )
@@ -92,3 +91,91 @@ fig2.add_trace(go.Scatter(x=pcg_time, y=pcg_value, mode='lines', line=dict(color
 fig2.update_layout(title='PCG',height=500, width=1200)        
 st.plotly_chart(fig2, use_container_width=True)
 
+st.subheader("COG Detection from STFT")
+
+col1, col2 = st.columns(2)
+with col1:
+    threshold_percent = st.slider("Magnitude Threshold (%)", 0, 100, 90, key="stft_thresh")
+with col2:
+    min_area_px = st.slider("Minimum Area (pixels)", 1, 500, 20, key="stft_area")
+
+threshold_value = np.percentile(db_spectrogram, threshold_percent)
+binary_mask = db_spectrogram > threshold_value
+labeled_regions, num_labels = label(binary_mask)
+filtered_mask = np.zeros_like(binary_mask)
+for i in range(1, num_labels + 1):
+    if np.sum(labeled_regions == i) >= min_area_px:
+        filtered_mask[labeled_regions == i] = True
+
+masked_spectrogram = db_spectrogram.copy()
+masked_spectrogram[~filtered_mask] = np.min(db_spectrogram)
+energy_signal = np.sum(masked_spectrogram, axis=0)
+
+signal_duration = len(pcg_time)/50
+st.write(signal_duration)
+frames_per_second = len(time_axis) / signal_duration
+peak_distance_frames = max(1, int(0.05 * frames_per_second))
+peaks, _ = find_peaks(energy_signal, height=np.percentile(energy_signal, 85), distance=peak_distance_frames)
+
+refined_peak_indices = []
+if len(peaks) > 0:
+    for p_index in peaks:
+        start_sample = start_list[p_index]
+        stop_sample = stop_list[p_index]
+        
+        search_window = pcg_value[start_sample:stop_sample]
+        
+        local_peak_index = np.argmax(np.abs(search_window))
+        
+        refined_peak_indices.append(start_sample + local_peak_index)
+
+
+st.write(f"Detected {len(refined_peak_indices)} COGs based on the criteria.")
+fig_peaks = go.Figure()
+fig_peaks.add_trace(go.Scatter(
+    x=pcg.time, y=pcg_value, name='PCG Signal', mode='lines',
+    line=dict(color='rgba(255, 176, 0, 0.7)')
+))
+
+if refined_peak_indices:
+    fig_peaks.add_trace(go.Scatter(
+        x=pcg.time[refined_peak_indices], y=pcg_value[refined_peak_indices], 
+        name='Detected COGs', mode='markers',
+        marker=dict(color='red', size=10, symbol='x')
+    ))
+
+fig_peaks.update_layout(title='PCG Signal with Refined COGs from STFT', height=400)
+st.plotly_chart(fig_peaks, use_container_width=True)
+sliced_mask = filtered_mask[:cutoff_index, :]
+
+highlight_z = np.full(sliced_mask.shape, np.nan)
+highlight_z[sliced_mask] = 1
+
+highlight_colorscale = [
+    [0, 'rgba(0,0,0,0.5)'],
+    [1, 'rgba(10, 255, 255, 1)'] 
+]
+
+fig_stft = go.Figure()
+
+fig_stft = go.Figure(data=go.Heatmap(
+    z=sliced_spectrogram, 
+    x=time_axis,
+    y=sliced_freq_axis,
+    colorscale='Jet',
+    colorbar=dict(title='Magnitude (dB)') 
+))
+
+fig_stft.add_trace(go.Heatmap(
+    z=highlight_z,
+    x=time_axis,
+    y=sliced_freq_axis,
+    colorscale=highlight_colorscale,
+    showscale=False, 
+    name='Detected Region',
+    hoverinfo='none' 
+))
+
+st.plotly_chart(fig_stft, use_container_width=True)
+st.write(f"Detected {len(refined_peak_indices)} COGs based on the criteria.")
+fig_peaks = go.Figure()
