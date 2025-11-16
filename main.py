@@ -25,19 +25,19 @@ page_dict = {}
 # pan tompkins algorithm for rr interval finding
 p1 = st.Page("pages/page1.py", title="Input and RR Peak Detection")
 # Segmenting and lag adjusment
-p2 = st.Page("pages/page2.py", title="Segmenting")
+p2 = st.Page("pages/page2.py", title="Segmenting & CWT Analysis")
 # CWT analysis
-p3 = st.Page("pages/page3.py", title="CWT Analysis")
+p3 = st.Page("pages/page3.py", title="STFT Analysis")
 # magnitude thresholding and COG caluclation
-p4 = st.Page("pages/page4.py", title="COG Calculation")
+# p4 = st.Page("pages/page4.py", title="COG Calculation")
 
 
 TDPage = [p1,p2]
-CWTPage = [p3,p4]
+STFTPage = [p3]
 
 
 # nav page dictionary
-mainNavigation = st.navigation({"Time Domain Analysis": TDPage, "Time-Frequency Domain Analysis":CWTPage})
+mainNavigation = st.navigation({"Time Domain Analysis": TDPage, "Time-Frequency Domain Analysis":STFTPage})
 mainNavigation.run()
-
+    
 

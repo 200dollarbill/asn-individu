@@ -5,13 +5,11 @@ import plotly.graph_objects as go
 import pywt
 from scipy.signal import find_peaks
 
-def perform_cwt_analysis(signal_data, fs):
+def cwt(signal_data, fs):
     scales = np.arange(1, 256)
     wavelet_name = 'cmor1.5-1.0' 
     coeffs, freqs = pywt.cwt(signal_data, scales, wavelet_name, sampling_period=1.0/fs)
-    
     cwt_magnitude = np.abs(coeffs)
-    
     return cwt_magnitude, freqs
 
 
@@ -55,7 +53,7 @@ if st.session_state.show_input:
     st.plotly_chart(fig_input, use_container_width=True)
     
     if st.button("Apply CWT"):
-        cwt_magnitude, freqs = perform_cwt_analysis(pcgval, fs)
+        cwt_magnitude, freqs = cwt(pcgval, fs)
         st.session_state.cwt_results = {'magnitude': cwt_magnitude, 'freqs': freqs}
 
     if st.session_state.cwt_results is not None:
@@ -77,6 +75,7 @@ if st.session_state.show_input:
         fig_cwt.add_trace(go.Contour(
             z=cwt_mag, x=pcgtime, y=cwt_freqs,contours_coloring='lines',line_color='white',line_width=2,showscale=False,contours=dict(start=threshold_value,end=threshold_value,size=0 )
         ))
+        
         
         fig_cwt.update_layout(
             title='CWT Scalogram',xaxis_title='Time', yaxis_title='Frequency',yaxis=dict(type='log'))
