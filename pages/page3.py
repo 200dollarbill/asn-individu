@@ -19,9 +19,9 @@ if 'RT_FOOT' not in st.session_state:
 
 
 if st.button("Calculate STFT"):
-    st.session_state.LAT_V = handler.load(f"v_lateralis")
-    st.session_state.LAT_G = handler.load(f"g_lateralis")
-    st.session_state.RT_FOOT = handler.load(f"footswitch")
+    st.session_state.LAT_V = handler.load(f"data/filtered_LAT_V")
+    st.session_state.LAT_G = handler.load(f"data/filtered_LAT_G")
+    st.session_state.RT_FOOT = handler.load(f"data/RT_FOOT")
         
 
 INDEX = st.session_state.LAT_V.time

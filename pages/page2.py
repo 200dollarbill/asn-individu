@@ -220,7 +220,9 @@ foot_plot.update_layout(title='Foot Plot', height=400)
 st.plotly_chart(foot_plot, use_container_width=True)
 st.plotly_chart(latg_plot, use_container_width=True)
 st.plotly_chart(latv_plot, use_container_width=True)
-
+handler.save(INDEX,filt_LAT_G, "data/filtered_LAT_G")
+handler.save(INDEX,filt_LAT_V, "data/filtered_LAT_V")
+handler.save(INDEX,RT_FOOT, "data/RT_FOOT")
 st.subheader("CWT & Segmentation Settings")
 col_t1, col_t2 = st.columns(2)
 with col_t1:
@@ -231,7 +233,7 @@ with col_t2:
 if st.button("Apply CWT"):
     cwt_magnitude_lv, freqs = cwt(filt_LAT_V, fs,f_min=0.1, f_max=250)
     cwt_magnitude_lg, freqs = cwt(filt_LAT_G, fs,f_min=0.1, f_max=250)
-
+    
     st.session_state.cwt_results = {'freqs': freqs, 
                                     'lv_mag' : cwt_magnitude_lv, 
                                     'lg_mag' : cwt_magnitude_lg
