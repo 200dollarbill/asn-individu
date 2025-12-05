@@ -30,8 +30,11 @@ with st.form(key='input'):
     input = st.form_submit_button(label="Load Data")
     clear = st.form_submit_button(label="Clear")
 
-lower_sec_limit = st.number_input(label="Lower Limit (seconds)", value=0,key="LOWER")
-upper_sec_limit = st.number_input(label="Upper Limit (seconds)", value=10,key="UPPER")
+lower_sec_limit = st.text_input(label="Lower Limit (seconds)", value=0,key="LOWER")
+lower_sec_limit = float(lower_sec_limit)
+upper_sec_limit = st.text_input(label="Upper Limit (seconds)", value=10,key="UPPER")
+upper_sec_limit = float(upper_sec_limit)
+
 # st.number_input()
 
 
@@ -66,7 +69,7 @@ if input or st.session_state.show_input:
     # st.write(f"Record comments: {record.comments}")
 
     foot_plot.add_trace(go.Scatter(
-        x=INDEX, 
+        x=INDEX/2000, 
         y=RT_FOOT, 
         mode='lines',
         name="Skala"
