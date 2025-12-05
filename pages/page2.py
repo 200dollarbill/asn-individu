@@ -125,7 +125,7 @@ def label_gl(seg, index):
 
     mid_pct = ((mid_time - min_time) / duration) * 100
     if 4 <= mid_pct <= 14:  return "GL1"
-    if 21 <= mid_pct <= 45: return "GL2"
+    if 21 <= mid_pct <= 50  : return "GL2"
     if 83 <= mid_pct <= 100: return "GL3"
     
     print(f'gl mid {mid_pct} start {start} end {end}')
@@ -221,12 +221,12 @@ gaitcycle = (INDEX/INDEX[-1]) * 100
 winsize = st.number_input(label="Window Size for filter (Must me odd/ganjil)", min_value=1, step=2,value=5)
 poly_order = st.number_input(label="Polynomial order for filter (Must be under window size)", max_value=winsize, min_value=1, value=2)
 
-# filt_LAT_G1 = savitzky_golay(LAT_G,window_size=winsize,poly_order=poly_order)
-filt_LAT_G = filter(LAT_G,2000)
-# filt_LAT_V1 = savitzky_golay(LAT_V,window_size=winsize,poly_order=poly_order)
-filt_LAT_V = filter(LAT_V,2000)
+filt_LAT_G1 = savitzky_golay(LAT_G,window_size=winsize,poly_order=poly_order)
+filt_LAT_G = filter(filt_LAT_G1,2000)
+filt_LAT_V1 = savitzky_golay(LAT_V,window_size=winsize,poly_order=poly_order)
+filt_LAT_V = filter(filt_LAT_V1,2000)
 
-st.write(INDEX)
+# st.write(INDEX)
 st.set_page_config(layout="wide")
 st.session_state.cwt_results = {}
 
@@ -261,8 +261,12 @@ with col_t2:
     thr_vl_pct = st.slider("VL Threshold %", 0, 100, 22)
 
 if st.button("Apply CWT"):
-    cwt_magnitude_lv, freqs = cwt(filt_LAT_V, fs,f_min=0.1, f_max=250)
-    cwt_magnitude_lg, freqs = cwt(filt_LAT_G, fs,f_min=0.1, f_max=250)
+    filt_LAT_G1 = savitzky_golay(LAT_G,window_size=winsize,poly_order=poly_order)
+    filt_LAT_G = filter(filt_LAT_G1,2000)
+    filt_LAT_V1 = savitzky_golay(LAT_V,window_size=winsize,poly_order=poly_order)
+    filt_LAT_V = filter(filt_LAT_V1,2000)
+    cwt_magnitude_lv, freqs = cwt(filt_LAT_V1, fs,f_min=0.1, f_max=250)
+    cwt_magnitude_lg, freqs = cwt(filt_LAT_G1, fs,f_min=0.1, f_max=250)
     
     st.session_state.cwt_results = {'freqs': freqs, 
                                     'lv_mag' : cwt_magnitude_lv, 
@@ -296,8 +300,8 @@ if st.button("Apply CWT"):
     freq_band = (cwt_freqs >= 20) & (cwt_freqs <= 150)
 
     with st.spinner("Calculating CWT..."):
-        cwt_magnitude_lv, freqs = cwt(LAT_V, fs,f_min=0.1, f_max=250)
-        cwt_magnitude_lg, freqs = cwt(LAT_G, fs,f_min=0.1,f_max=250)
+        cwt_magnitude_lv, freqs = cwt(filt_LAT_V, fs,f_min=0.1, f_max=250)
+        cwt_magnitude_lg, freqs = cwt(filt_LAT_G, fs,f_min=0.1,f_max=250)
 
         st.session_state.cwt_results = {
             'freqs': freqs, 
