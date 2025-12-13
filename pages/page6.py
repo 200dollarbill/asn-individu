@@ -25,7 +25,7 @@ n_fft = st.sidebar.selectbox(
 )
 st.subheader("1. Load Data Files")
 col1, col2 = st.columns(2)
-tacho_filename = col1.text_input("Enter Tachogram Data Filename:", "rr_save")
+tacho_filename = col1.text_input("Enter Tachogram Data Filename From HR:", "rr_save")
 raw_filename = col2.text_input("Enter Raw Data Filename:", "daffa_data")
 
 if st.button("Load and Analyze Frequency Domain"):
