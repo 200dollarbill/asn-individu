@@ -9,9 +9,9 @@ st.set_page_config(layout="wide")
 st.title("PPG Signal Analysis with DWT")
 
 @st.cache_data
-def compute_dwt_coefficients():
+def dwt():
     coeff = DWTCoeff()
-    var = handler.load("rawdata")
+    var = handler.load("temp/daffa_data")
     ppgdata = var.value.to_numpy()
     time = var.time.to_numpy()
     total = len(ppgdata)
@@ -27,7 +27,7 @@ def compute_dwt_coefficients():
     
     return time, ppgdata, w2fb, scalecount
 
-time, ppgdata, w2fb, scalecount = compute_dwt_coefficients()
+time, ppgdata, w2fb, scalecount = dwt()
 
 for j in range(1, scalecount + 1):
     fig = go.Figure()
@@ -59,4 +59,6 @@ for j in range(1, scalecount + 1):
 
     st.plotly_chart(fig, use_container_width=True)
 
-handler.save(time,w2fb[7], filename="dwt8")
+handler.save(time,w2fb[6], filename="temp/dwt6")
+handler.save(time,w2fb[8], filename="temp/dwt8")
+handler.save(time,w2fb[7], filename="temp/dwt7")
