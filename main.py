@@ -34,16 +34,19 @@ p4 = st.Page("pages/page4.py", title="Breath Rate Tachogram")
 p5 = st.Page("pages/page5.py", title="Heart Rate Analysis")
 # RR F domain analysis
 p6 = st.Page("pages/page6.py", title="RR Frequency Analysis")
+# vasometric activity
+p7 = st.Page("pages/page7.py", title="Vasometric Frequency Analysis")
 
 
 
 
 respPage = [p1,p2,p3,p4]
 RRPage = [ p5, p6]
+vasoPage = [p7]
 
 
 # nav page dictionary
-mainNavigation = st.navigation({"Respiratory Signal Analysis": respPage, "RR Analysis":RRPage})
+mainNavigation = st.navigation({"Respiratory Signal Analysis": respPage, "RR Analysis":RRPage, "Vasometric Activity Analysis": vasoPage})
 mainNavigation.run()
 
 
