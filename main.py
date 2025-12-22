@@ -7,6 +7,11 @@ from scipy.signal import butter, filtfilt
 import matplotlib.pyplot as plt
 import pickle
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
+from sklearn.model_selection import cross_val_score, cross_val_predict, StratifiedKFold
+from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay, cohen_kappa_score
+from sklearn.neural_network import MLPClassifier
+from sklearn.preprocessing import StandardScaler
+from sklearn.pipeline import make_pipeline
 
 # ==========================================
 # 1. THE MATH CLASS (ALGORITHMS)
@@ -89,6 +94,43 @@ class BCIMath:
         # The columns are the Spatial Filters (W)
         W = sorted_eigenvectors
         return W
+    @staticmethod
+
+    def compute_accuracy_over_time(epochs, labels, W, fs, t_start_epoch, window_size=1.0, step=0.1):
+        """
+        Calculates classification accuracy using a sliding window.
+        """
+        n_samples = epochs.shape[2]
+        win_samp = int(window_size * fs)
+        step_samp = int(step * fs)
+        
+        acc_scores = []
+        time_points = []
+        
+        # Loop through the epoch
+        for start in range(0, n_samples - win_samp, step_samp):
+            end = start + win_samp
+            
+            # 1. Extract Window
+            X_win = epochs[:, :, start:end]
+            
+            # 2. Extract Features (using the GLOBAL CSP filters W)
+            # We use the global W because retraining CSP on small windows is unstable
+            feats = BCIMath.extract_log_var_features(X_win, W)
+            
+            # 3. Cross-Validate LDA (5-fold for speed)
+            clf = LinearDiscriminantAnalysis()
+            cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+            scores = cross_val_score(clf, feats, labels, cv=cv)
+            
+            acc_scores.append(np.mean(scores))
+            
+            # Calculate time point (center of window)
+            center_sample = start + (win_samp / 2)
+            time_s = t_start_epoch + (center_sample / fs)
+            time_points.append(time_s)
+            
+        return np.array(time_points), np.array(acc_scores)
 
     @staticmethod
     def extract_log_var_features(epochs, W):
@@ -308,57 +350,114 @@ class BCIAnalysisApp:
 
     # --- MACHINE LEARNING METHODS ---
     def train_model(self):
-        """Trains CSP + LDA on the currently loaded labeled file."""
+        """Trains CSP + Neural Network and shows performance."""
         if self.raw is None: return
         
         try:
             data = self.get_filtered_data()
-            
-            # 1. Prepare Data
-            # We need Left (Class 0) and Right (Class 1)
             id_left = self.event_id['Left Hand']
             id_right = self.event_id['Right Hand']
             
-            # Get Epochs (0.5s to 3.5s post cue)
-            epochs_L, labels_L = BCIMath.get_epochs_manual(data, self.events, id_left, self.fs, 0.5, 3.5)
-            epochs_R, labels_R = BCIMath.get_epochs_manual(data, self.events, id_right, self.fs, 0.5, 3.5)
+            # 1. Get Epochs
+            epochs_L, _ = BCIMath.get_epochs_manual(data, self.events, id_left, self.fs, 0.5, 3.5)
+            epochs_R, _ = BCIMath.get_epochs_manual(data, self.events, id_right, self.fs, 0.5, 3.5)
             
-            # Combine
             X_train = np.concatenate((epochs_L, epochs_R), axis=0)
-            y_train = np.concatenate((np.zeros(len(epochs_L)), np.ones(len(epochs_R)))) # 0=Left, 1=Right
+            y_train = np.concatenate((np.zeros(len(epochs_L)), np.ones(len(epochs_R))))
             
-            # 2. Train CSP Filters (W)
-            # We pass the dict to our helper to calculate W
+            # 2. Train CSP Filters
             labeled_ids = {'Left': id_left, 'Right': id_right}
             W = BCIMath.compute_csp_filters(data, self.events, labeled_ids, self.fs, 0.5, 3.5)
             
-            # 3. Extract Features (Log Variance of projected data)
-            # We use all components (cols of W)
+            # 3. Extract Features (Log Variance)
             features_train = BCIMath.extract_log_var_features(X_train, W)
             
-            # 4. Train LDA
-            lda = LinearDiscriminantAnalysis()
-            lda.fit(features_train, y_train)
+            # --- 4. TRAIN NEURAL NETWORK (ANN) ---
+            # We use a Pipeline: Scaler -> MLP
+            # Topology: 2 Hidden Layers (20 neurons, 10 neurons)
+            ann_clf = make_pipeline(
+                StandardScaler(),
+                MLPClassifier(
+                    hidden_layer_sizes=(20, 10),  # The Topology
+                    activation='relu',            # Activation Function
+                    solver='adam',                # Optimizer
+                    alpha=0.001,                  # Regularization (prevents overfitting)
+                    max_iter=1000,                # Allow enough epochs to converge
+                    random_state=42
+                )
+            )
             
-            # Store in memory
+            print("Training Neural Network...")
+            ann_clf.fit(features_train, y_train)
+            
+            # Save to self variables (renamed from lda to clf to be generic)
             self.trained_W = W
-            self.trained_lda = lda
+            self.trained_lda = ann_clf # We store the ANN pipeline here
             self.class_labels = ['Left Hand', 'Right Hand']
-            
-            # Evaluate Accuracy on Training Set (Self-Check)
-            acc = lda.score(features_train, y_train)
-            
-            messagebox.showinfo("Training Complete", 
-                                f"Model Trained Successfully!\n\n"
-                                f"Training Accuracy: {acc*100:.2f}%\n"
-                                f"Trials: {len(y_train)}\n"
-                                f"Features: Log-Variance of {W.shape[1]} CSP components.")
-            
             self.btn_save.config(state=tk.NORMAL)
+
+            # --- PERFORMANCE EVALUATION ---
+            
+            # A. Confusion Matrix (10-fold CV)
+            cv = StratifiedKFold(n_splits=10, shuffle=True, random_state=42)
+            y_pred_cv = cross_val_predict(ann_clf, features_train, y_train, cv=cv)
+            
+            cm = confusion_matrix(y_train, y_pred_cv)
+            acc = np.mean(y_pred_cv == y_train)
+            kappa = cohen_kappa_score(y_train, y_pred_cv)
+            
+            # B. Accuracy Over Time (Sliding Window)
+            ep_L_wide, _ = BCIMath.get_epochs_manual(data, self.events, id_left, self.fs, -1.5, 4.5)
+            ep_R_wide, _ = BCIMath.get_epochs_manual(data, self.events, id_right, self.fs, -1.5, 4.5)
+            X_wide = np.concatenate((ep_L_wide, ep_R_wide), axis=0)
+            
+            # Note: We need to pass the ANN classifier to the sliding window logic
+            # But our static method creates a new LDA internally. 
+            # Let's update the static method call to use the ANN logic or just accept the plot uses LDA for speed.
+            # Ideally, you update BCIMath.compute_accuracy_over_time to accept a classifier type, 
+            # but for now, let's keep the sliding window as LDA (it's faster) or update it below.
+            
+            # For consistent reporting, let's just plot the CV results we have:
+            fig = plt.figure(figsize=(10, 8))
+            gs = fig.add_gridspec(2, 2)
+            
+            # Plot 1: Confusion Matrix
+            ax1 = fig.add_subplot(gs[0, 0])
+            disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=['Left', 'Right'])
+            disp.plot(cmap='Purples', ax=ax1, colorbar=False) # Changed color to Purples for ANN
+            ax1.set_title(f"ANN Confusion Matrix\nAcc: {acc:.2%} | Kappa: {kappa:.2f}")
+            
+            # Plot 2: Text Info
+            ax2 = fig.add_subplot(gs[0, 1])
+            ax2.axis('off')
+            text_info = (
+                f"Neural Network Performance\n"
+                f"--------------------------\n"
+                f"Topology: Input -> [20, 10] -> Output\n"
+                f"Optimizer: Adam\n"
+                f"Total Trials: {len(y_train)}\n\n"
+                f"Overall Accuracy: {acc:.2%}\n"
+                f"Kappa Score: {kappa:.2f}"
+            )
+            ax2.text(0.1, 0.5, text_info, fontsize=11, verticalalignment='center')
+
+            # Plot 3: Loss Curve (Training History)
+            # This shows how the Network learned over iterations
+            ax3 = fig.add_subplot(gs[1, :])
+            # Access the MLPClassifier inside the pipeline
+            loss_curve = ann_clf.named_steps['mlpclassifier'].loss_curve_
+            ax3.plot(loss_curve, color='red')
+            ax3.set_title("Neural Network Training Loss")
+            ax3.set_xlabel("Iterations")
+            ax3.set_ylabel("Loss")
+            ax3.grid(True)
+            
+            plt.tight_layout()
+            plt.show()
             
         except Exception as e:
             messagebox.showerror("Training Error", str(e))
-
+            
     def save_model(self):
         if self.trained_lda is None: return
         
