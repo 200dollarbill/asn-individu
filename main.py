@@ -281,7 +281,6 @@ class BCIAnalysisApp:
         plt.suptitle(f"ERD/ERS Analysis (Manual Calculation) - {self.filename}", fontsize=14)
         plt.tight_layout()
         plt.show()
-
     def run_csp(self):
         """Uses BCIMath class to calculate CSP patterns from scratch."""
         if self.raw is None: return
@@ -292,31 +291,45 @@ class BCIAnalysisApp:
         filtered_data = BCIMath.butter_bandpass_filter(raw_data, 8.0, 30.0, fs, order=4)
 
         # 2. Compute CSP Patterns Manually
-        # Active window: 0.5s to 3.5s
         patterns, labels = BCIMath.compute_csp_manual(
             filtered_data, self.events, self.event_id, fs, tmin=0.5, tmax=3.5
         )
 
-        # 3. Plotting
-        # We use MNE's plot_topomap because drawing heads from scratch is complex.
-        # We need to visualize the patterns associated with the most discriminative filters.
-        # Usually, the first component (index 0) and last component (index -1) are the most important.
+        # --- PRINT NUMERICAL SELECTIVITY ---
+        ch_names = self.raw.ch_names
+        print("\n=== CSP SPATIAL PATTERN WEIGHTS ===")
+        print(f"Channels: {ch_names}")
         
+        # Normalize weights for easier reading
+        pat1 = patterns[0, :]
+        pat1 = pat1 / np.max(np.abs(pat1))
+        
+        pat2 = patterns[-1, :]
+        pat2 = pat2 / np.max(np.abs(pat2))
+
+        print(f"Pattern 1 (Left Hand Focus): {np.round(pat1, 3)}")
+        print(f"Pattern 2 (Right Hand Focus): {np.round(pat2, 3)}")
+        print("===================================\n")
+
+        # 3. Plotting with "Sharper" settings
         fig, axes = plt.subplots(1, 2, figsize=(10, 4))
         info = self.raw.info
         
-        # Component 1 (Largest Eigenvalue)
-        mne.viz.plot_topomap(patterns[0, :], info, axes=axes[0], show=False, sphere=0.12)
-        axes[0].set_title("CSP Component 1\n(Discriminates Class 1)")
+        # FIX: Removed 'show_names=True'. 
+        # Passing 'names=ch_names' is sufficient to display them.
+        
+        # Plot Component 1
+        mne.viz.plot_topomap(patterns[0, :], info, axes=axes[0], show=False, 
+                             sphere=0.12, contours=0, sensors=True, names=ch_names)
+        axes[0].set_title("CSP Component 1\n(Should highlight C3/Left)")
 
-        # Component 3 (Smallest Eigenvalue - Last one)
-        # Since we have 3 channels, we have 3 components.
-        mne.viz.plot_topomap(patterns[-1, :], info, axes=axes[1], show=False, sphere=0.12)
-        axes[1].set_title("CSP Component 3\n(Discriminates Class 2)")
+        # Plot Component 3
+        mne.viz.plot_topomap(patterns[-1, :], info, axes=axes[1], show=False, 
+                             sphere=0.12, contours=0, sensors=True, names=ch_names)
+        axes[1].set_title("CSP Component 3\n(Should highlight C4/Right)")
 
-        plt.suptitle(f"CSP Patterns (Manual Calculation) - {self.filename}")
+        plt.suptitle(f"CSP Spatial Patterns (Sharpened) - {self.filename}")
         plt.show()
-
 if __name__ == "__main__":
     root = tk.Tk()
     app = BCIAnalysisApp(root)  
