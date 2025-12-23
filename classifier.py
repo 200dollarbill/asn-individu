@@ -14,26 +14,15 @@ class CLASSIFIER:
         self.class_labels = None
 
     def train_model(self, data, events, event_ids, fs, tmin=0.5, tmax=3.5):
-        """
-        Trains CSP + Neural Network and returns performance metrics.
-        """
         id_left = event_ids['Left Hand']
         id_right = event_ids['Right Hand']
-
-        # 1. Get Epochs
         epochs_L, _ = ANALYSIS.get_epochs_manual(data, events, id_left, fs, tmin, tmax)
         epochs_R, _ = ANALYSIS.get_epochs_manual(data, events, id_right, fs, tmin, tmax)
 
         X_train = np.concatenate((epochs_L, epochs_R), axis=0)
         y_train = np.concatenate((np.zeros(len(epochs_L)), np.ones(len(epochs_R))))
-
-        # 2. Train CSP Filters
         W = ANALYSIS.gen_csp(data, events, event_ids, fs, tmin, tmax)
-
-        # 3. Extract Features (Log Variance)
         features_train = ANALYSIS.extract_log_var_features(X_train, W)
-
-        # 4. TRAIN NEURAL NETWORK (ANN)
         ann_clf = make_pipeline(
             StandardScaler(),
             MLPClassifier(
@@ -48,13 +37,10 @@ class CLASSIFIER:
 
         print("Training Neural Network...")
         ann_clf.fit(features_train, y_train)
-
-        # Save to instance
         self.trained_W = W
         self.trained_clf = ann_clf
         self.class_labels = ['Left Hand', 'Right Hand']
 
-        # PERFORMANCE EVALUATION
         cv = StratifiedKFold(n_splits=10, shuffle=True, random_state=42)
         y_pred_cv = cross_val_predict(ann_clf, features_train, y_train, cv=cv)
 
@@ -67,26 +53,17 @@ class CLASSIFIER:
         return acc, kappa, cm, loss_curve, len(y_train)
 
     def perform_sliding_window_analysis(self, data, events, event_ids, fs):
-        """
-        Runs the sliding window analysis using the trained NN architecture.
-        Uses a wider time window (-1.5 to 4.5s) to show pre-cue and post-cue.
-        """
         if self.trained_clf is None:
             raise ValueError("Model not trained yet.")
 
         id_left = event_ids['Left Hand']
         id_right = event_ids['Right Hand']
 
-        # Get Wider Epochs
         ep_L_wide, _ = ANALYSIS.get_epochs_manual(data, events, id_left, fs, -1.5, 4.5)
         ep_R_wide, _ = ANALYSIS.get_epochs_manual(data, events, id_right, fs, -1.5, 4.5)
         
         X_wide = np.concatenate((ep_L_wide, ep_R_wide), axis=0)
         y_wide = np.concatenate((np.zeros(len(ep_L_wide)), np.ones(len(ep_R_wide))))
-
-        # Run Analysis
-        # We pass self.trained_clf as the template. 
-        # BCIMath will clone it, so the weights are reset for each window cross-validation
         t_course, acc_course = ANALYSIS.calculate_acc(
             X_wide, y_wide, self.trained_W, fs, 
             t_start_epoch=-1.5, 
@@ -122,16 +99,13 @@ class CLASSIFIER:
         if self.trained_clf is None:
             raise ValueError("No model loaded")
 
-        # 1. Extract Unknown Epochs
         epochs_unk, _ = ANALYSIS.get_epochs_manual(data, events, event_id_unknown, fs, tmin, tmax)
 
         if len(epochs_unk) == 0:
             raise ValueError("No valid epochs found")
 
-        # 2. Extract Features
         features_unk = ANALYSIS.extract_log_var_features(epochs_unk, self.trained_W)
 
-        # 3. Predict
         preds = self.trained_clf.predict(features_unk)
 
         count_left = np.sum(preds == 0)
