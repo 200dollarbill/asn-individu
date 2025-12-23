@@ -5,29 +5,25 @@ import matplotlib.pyplot as plt
 import scipy.linalg
 from sklearn.metrics import ConfusionMatrixDisplay
 
-from erdcsp import BCIMath
-from classifier import BCIClassifier
+from erdcsp import ANALYSIS
+from classifier import CLASSIFIER
 
-class BCIAnalysisApp:
+class MAINAPP:
     def __init__(self, root):
         self.root = root
-        self.root.title("BCI EEG Analysis & Classification")
+        # self.root.title("test")
         self.root.geometry("500x550")
-
-        # Variables
         self.raw = None
         self.filename = None
         self.events = None
         self.event_id = None
         self.fs = 250.0
-        
-        # Classifier instance
-        self.classifier = BCIClassifier()
+        self.classifier = CLASSIFIER()
 
-        # UI Layout
-        tk.Label(root, text="BCI Competition 2008 - Graz Data B", font=("Arial", 14, "bold")).pack(pady=10)
+        # layout
+        tk.Label(root, text="ASN - EEG Analysis", font=("Arial", 14, "bold")).pack(pady=10)
         
-        # --- Section 1: Data Loading ---
+        # data Loading 
         frame_load = tk.LabelFrame(root, text="1. Data Loading", padx=10, pady=5)
         frame_load.pack(fill="x", padx=10, pady=5)
         
@@ -36,7 +32,7 @@ class BCIAnalysisApp:
         self.lbl_status = tk.Label(frame_load, text="No file loaded", fg="gray")
         self.lbl_status.pack()
 
-        # --- Section 2: Analysis ---
+        # analysis buttons
         frame_analysis = tk.LabelFrame(root, text="2. Analysis (Visual)", padx=10, pady=5)
         frame_analysis.pack(fill="x", padx=10, pady=5)
 
@@ -45,7 +41,7 @@ class BCIAnalysisApp:
         self.btn_csp = tk.Button(frame_analysis, text="Run CSP Pattern Plot", command=self.run_csp_plot, state=tk.DISABLED)
         self.btn_csp.pack(fill="x", pady=2)
 
-        # --- Section 3: Classification ---
+        # classification buttons 
         frame_ml = tk.LabelFrame(root, text="3. Machine Learning (Train/Predict)", padx=10, pady=5)
         frame_ml.pack(fill="x", padx=10, pady=5)
 
@@ -58,9 +54,9 @@ class BCIAnalysisApp:
         self.btn_load_model = tk.Button(frame_ml, text="Load Model (.dat)", command=self.load_model)
         self.btn_load_model.pack(fill="x", pady=2)
 
-        tk.Label(frame_ml, text="--- Prediction ---").pack(pady=2)
+        tk.Label(frame_ml, text="Predictions").pack(pady=2)
         
-        self.btn_predict = tk.Button(frame_ml, text="Predict Unknowns (Event 783)", command=self.predict_unknowns, state=tk.DISABLED, bg="#fff3e0")
+        self.btn_predict = tk.Button(frame_ml, text="Predict Unknown Cue", command=self.predict_unknowns, state=tk.DISABLED, bg="#e1f5fe")
         self.btn_predict.pack(fill="x", pady=2)
 
     def load_data(self):
@@ -68,10 +64,10 @@ class BCIAnalysisApp:
         if not file_path: return
 
         try:
-            # Load Data
+            # data loading
             self.raw = mne.io.read_raw_gdf(file_path, preload=True, verbose=False)
             
-            # Pick Channels
+            # channel
             target_channels = ['EEG:C3', 'EEG:Cz', 'EEG:C4']
             existing_chs = self.raw.ch_names
             to_pick = [ch for ch in target_channels if ch in existing_chs]
@@ -81,18 +77,15 @@ class BCIAnalysisApp:
             
             self.raw.pick_channels(to_pick)
             
-            # Rename for MNE
             rename_dict = {ch: ch.replace('EEG:', '') for ch in to_pick}
             self.raw.rename_channels(rename_dict)
             montage = mne.channels.make_standard_montage('standard_1020')
             self.raw.set_montage(montage)
 
-            # Events
             events, event_id = mne.events_from_annotations(self.raw, verbose=False)
             self.events = events
             self.fs = self.raw.info['sfreq']
             
-            # Map standard Graz B codes
             self.event_id = {}
             for key, val in event_id.items():
                 if '769' in key: self.event_id['Left Hand'] = val
@@ -102,7 +95,6 @@ class BCIAnalysisApp:
             self.filename = file_path.split("/")[-1]
             self.lbl_status.config(text=f"Loaded: {self.filename}\nEvents: {list(self.event_id.keys())}", fg="green")
             
-            # Enable Buttons
             self.btn_erd.config(state=tk.NORMAL)
             self.btn_csp.config(state=tk.NORMAL)
             
@@ -121,14 +113,14 @@ class BCIAnalysisApp:
 
     def get_filtered_data(self):
         raw_data = self.raw.get_data() * 1e6
-        return BCIMath.butter_bandpass_filter(raw_data, 8.0, 30.0, self.fs, order=4)
+        return ANALYSIS.butter_bandpass_filter(raw_data, 8.0, 30.0, self.fs, order=4)
 
     def run_erd_ers(self):
         if self.raw is None: return
         data = self.get_filtered_data()
         labeled_ids = {k: v for k, v in self.event_id.items() if k in ['Left Hand', 'Right Hand']}
         
-        times, results = BCIMath.erders(
+        times, results = ANALYSIS.erders(
             data, self.events, labeled_ids, self.fs, 
             tmin=-1.5, tmax=4.5, ref_tmin=-1.0, ref_tmax=0.0
         )
@@ -149,7 +141,7 @@ class BCIAnalysisApp:
         labeled_ids = {k: v for k, v in self.event_id.items() if k in ['Left Hand', 'Right Hand']}
         
         try:
-            W = BCIMath.gen_csp(data, self.events, labeled_ids, self.fs, 0.5, 3.5)
+            W = ANALYSIS.gen_csp(data, self.events, labeled_ids, self.fs, 0.5, 3.5)
             patterns = scipy.linalg.pinv(W).T
             
             fig, axes = plt.subplots(1, 2, figsize=(8, 4))
@@ -171,20 +163,20 @@ class BCIAnalysisApp:
             data = self.get_filtered_data()
             labeled_ids = {k: v for k, v in self.event_id.items() if k in ['Left Hand', 'Right Hand']}
             
-            # 1. Train Main Model
+            # training by backprop
             acc, kappa, cm, loss_curve, total_trials = self.classifier.train_model(data, self.events, labeled_ids, self.fs)
             
             self.btn_save.config(state=tk.NORMAL)
 
-            # 2. Run Sliding Window Analysis (New Feature)
+            # sliding window analysis
             print("Running Sliding Window Analysis (this may take 10-20 seconds)...")
             t_course, acc_course = self.classifier.perform_sliding_window_analysis(data, self.events, labeled_ids, self.fs)
 
-            # 3. Plotting Report
+            # main plot
             fig = plt.figure(figsize=(12, 8))
             gs = fig.add_gridspec(2, 2)
             
-            # Plot 1: Confusion Matrix
+            # confusion matrix
             ax1 = fig.add_subplot(gs[0, 0])
             disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=['Left', 'Right'])
             disp.plot(cmap='Purples', ax=ax1, colorbar=False)
@@ -195,16 +187,13 @@ class BCIAnalysisApp:
             ax2.axis('off')
             text_info = (
                 f"Neural Network Performance\n"
-                f"--------------------------\n"
-                f"Topology: Input -> [20, 10] -> Output\n"
-                f"Optimizer: Adam\n"
+                f"Topology: Input [2] -> [20, 10] -> Output [2]\n"
                 f"Total Trials: {total_trials}\n\n"
                 f"Overall Accuracy: {acc:.2%}\n"
-                f"Kappa Score: {kappa:.2f}"
+                # f"Kappa Score: {kappa:.2f}"
             )
             ax2.text(0.1, 0.5, text_info, fontsize=11, verticalalignment='center')
 
-            # Plot 3: Loss Curve
             ax3 = fig.add_subplot(gs[1, 0])
             ax3.plot(loss_curve, color='red')
             ax3.set_title("Training Loss (Convergence)")
@@ -212,7 +201,7 @@ class BCIAnalysisApp:
             ax3.set_ylabel("Loss")
             ax3.grid(True)
 
-            # Plot 4: Accuracy Over Time (Sliding Window)
+            # sliding window accuracy
             ax4 = fig.add_subplot(gs[1, 1])
             ax4.plot(t_course, acc_course, 'o-', color='purple', linewidth=2, markersize=4)
             ax4.axhline(0.5, color='gray', linestyle='--', label='Chance')
@@ -281,7 +270,6 @@ class BCIAnalysisApp:
         except Exception as e:
             messagebox.showerror("Prediction Error", str(e))
 
-if __name__ == "__main__":
     root = tk.Tk()
-    app = BCIAnalysisApp(root)
+    app = MAINAPP(root)
     root.mainloop()

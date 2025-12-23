@@ -6,7 +6,7 @@ from sklearn.model_selection import cross_val_score, StratifiedKFold
 import scipy.linalg
 from scipy.signal import butter, filtfilt
 
-class BCIMath:
+class ANALYSIS:
     """
     Implements BCI algorithms (Filtering, CSP, Feature Extraction, ERD/ERS).
     """
@@ -55,8 +55,8 @@ class BCIMath:
         """
         labels = list(event_ids.keys())
         # Extract data for both classes
-        epochs_c1, _ = BCIMath.get_epochs_manual(data, events, event_ids[labels[0]], fs, tmin, tmax)
-        epochs_c2, _ = BCIMath.get_epochs_manual(data, events, event_ids[labels[1]], fs, tmin, tmax)
+        epochs_c1, _ = ANALYSIS.get_epochs_manual(data, events, event_ids[labels[0]], fs, tmin, tmax)
+        epochs_c2, _ = ANALYSIS.get_epochs_manual(data, events, event_ids[labels[1]], fs, tmin, tmax)
 
         if len(epochs_c1) == 0 or len(epochs_c2) == 0:
             raise ValueError("Not enough epochs to train CSP.")
@@ -109,7 +109,7 @@ class BCIMath:
 
             # 2. Extract Features (using the GLOBAL CSP filters W)
             # We use the global W because retraining CSP on small windows is unstable
-            feats = BCIMath.extract_log_var_features(X_win, W)
+            feats = ANALYSIS.extract_log_var_features(X_win, W)
 
             # 3. Cross-Validate LDA (5-fold for speed)
             clf = LinearDiscriminantAnalysis()
@@ -152,7 +152,7 @@ class BCIMath:
         ref_idx_end = int((ref_tmax - tmin) * fs)
         results = {}
         for label, code in event_ids.items():
-            epochs, _ = BCIMath.get_epochs_manual(data, events, code, fs, tmin, tmax)
+            epochs, _ = ANALYSIS.get_epochs_manual(data, events, code, fs, tmin, tmax)
             if len(epochs) == 0: continue
             power = epochs ** 2
             avg_power = np.mean(power, axis=0)
@@ -197,8 +197,8 @@ class BCIMath:
     @staticmethod
     def gen_csp(data, events, event_ids, fs, tmin, tmax):
         labels = list(event_ids.keys())
-        epochs_c1, _ = BCIMath.get_epochs_manual(data, events, event_ids[labels[0]], fs, tmin, tmax)
-        epochs_c2, _ = BCIMath.get_epochs_manual(data, events, event_ids[labels[1]], fs, tmin, tmax)
+        epochs_c1, _ = ANALYSIS.get_epochs_manual(data, events, event_ids[labels[0]], fs, tmin, tmax)
+        epochs_c2, _ = ANALYSIS.get_epochs_manual(data, events, event_ids[labels[1]], fs, tmin, tmax)
 
         if len(epochs_c1) == 0 or len(epochs_c2) == 0:
             raise ValueError("Not enough epochs to train CSP.")
@@ -237,7 +237,7 @@ class BCIMath:
 
             X_win = epochs[:, :, start:end]
             # obtained features
-            feats = BCIMath.extract_log_var_features(X_win, W)
+            feats = ANALYSIS.extract_log_var_features(X_win, W)
 
             # cross validation
             clf = clone(clf_template)

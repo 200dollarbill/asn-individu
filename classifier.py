@@ -5,9 +5,9 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.pipeline import make_pipeline
 from sklearn.model_selection import cross_val_score, cross_val_predict, StratifiedKFold
 from sklearn.metrics import confusion_matrix, cohen_kappa_score
-from erdcsp import BCIMath
+from erdcsp import ANALYSIS
 
-class BCIClassifier:
+class CLASSIFIER:
     def __init__(self):
         self.trained_W = None
         self.trained_clf = None
@@ -21,17 +21,17 @@ class BCIClassifier:
         id_right = event_ids['Right Hand']
 
         # 1. Get Epochs
-        epochs_L, _ = BCIMath.get_epochs_manual(data, events, id_left, fs, tmin, tmax)
-        epochs_R, _ = BCIMath.get_epochs_manual(data, events, id_right, fs, tmin, tmax)
+        epochs_L, _ = ANALYSIS.get_epochs_manual(data, events, id_left, fs, tmin, tmax)
+        epochs_R, _ = ANALYSIS.get_epochs_manual(data, events, id_right, fs, tmin, tmax)
 
         X_train = np.concatenate((epochs_L, epochs_R), axis=0)
         y_train = np.concatenate((np.zeros(len(epochs_L)), np.ones(len(epochs_R))))
 
         # 2. Train CSP Filters
-        W = BCIMath.gen_csp(data, events, event_ids, fs, tmin, tmax)
+        W = ANALYSIS.gen_csp(data, events, event_ids, fs, tmin, tmax)
 
         # 3. Extract Features (Log Variance)
-        features_train = BCIMath.extract_log_var_features(X_train, W)
+        features_train = ANALYSIS.extract_log_var_features(X_train, W)
 
         # 4. TRAIN NEURAL NETWORK (ANN)
         ann_clf = make_pipeline(
@@ -78,8 +78,8 @@ class BCIClassifier:
         id_right = event_ids['Right Hand']
 
         # Get Wider Epochs
-        ep_L_wide, _ = BCIMath.get_epochs_manual(data, events, id_left, fs, -1.5, 4.5)
-        ep_R_wide, _ = BCIMath.get_epochs_manual(data, events, id_right, fs, -1.5, 4.5)
+        ep_L_wide, _ = ANALYSIS.get_epochs_manual(data, events, id_left, fs, -1.5, 4.5)
+        ep_R_wide, _ = ANALYSIS.get_epochs_manual(data, events, id_right, fs, -1.5, 4.5)
         
         X_wide = np.concatenate((ep_L_wide, ep_R_wide), axis=0)
         y_wide = np.concatenate((np.zeros(len(ep_L_wide)), np.ones(len(ep_R_wide))))
@@ -87,7 +87,7 @@ class BCIClassifier:
         # Run Analysis
         # We pass self.trained_clf as the template. 
         # BCIMath will clone it, so the weights are reset for each window cross-validation
-        t_course, acc_course = BCIMath.calculate_acc(
+        t_course, acc_course = ANALYSIS.calculate_acc(
             X_wide, y_wide, self.trained_W, fs, 
             t_start_epoch=-1.5, 
             clf_template=self.trained_clf, 
@@ -123,13 +123,13 @@ class BCIClassifier:
             raise ValueError("No model loaded")
 
         # 1. Extract Unknown Epochs
-        epochs_unk, _ = BCIMath.get_epochs_manual(data, events, event_id_unknown, fs, tmin, tmax)
+        epochs_unk, _ = ANALYSIS.get_epochs_manual(data, events, event_id_unknown, fs, tmin, tmax)
 
         if len(epochs_unk) == 0:
             raise ValueError("No valid epochs found")
 
         # 2. Extract Features
-        features_unk = BCIMath.extract_log_var_features(epochs_unk, self.trained_W)
+        features_unk = ANALYSIS.extract_log_var_features(epochs_unk, self.trained_W)
 
         # 3. Predict
         preds = self.trained_clf.predict(features_unk)
