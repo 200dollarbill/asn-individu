@@ -1,24 +1,13 @@
 import tkinter as tk
 from tkinter import filedialog, messagebox, simpledialog
 import mne
-import numpy as np
-import scipy.linalg
-from scipy.signal import butter, filtfilt
 import matplotlib.pyplot as plt
-import pickle
-from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
-from sklearn.model_selection import cross_val_score, cross_val_predict, StratifiedKFold
-from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay, cohen_kappa_score
-from sklearn.neural_network import MLPClassifier
-from sklearn.preprocessing import StandardScaler
-from sklearn.pipeline import make_pipeline
+import scipy.linalg
+from sklearn.metrics import ConfusionMatrixDisplay
 
 from erdcsp import BCIMath
 from classifier import BCIClassifier
 
-# ==========================================
-# 2. THE GUI APP
-# ==========================================
 class BCIAnalysisApp:
     def __init__(self, root):
         self.root = root
@@ -104,7 +93,6 @@ class BCIAnalysisApp:
             self.fs = self.raw.info['sfreq']
             
             # Map standard Graz B codes
-            # 769: Left, 770: Right, 783: Unknown/Cue
             self.event_id = {}
             for key, val in event_id.items():
                 if '769' in key: self.event_id['Left Hand'] = val
@@ -118,18 +106,14 @@ class BCIAnalysisApp:
             self.btn_erd.config(state=tk.NORMAL)
             self.btn_csp.config(state=tk.NORMAL)
             
-            # Only enable Train if we have Left/Right labels
             if 'Left Hand' in self.event_id and 'Right Hand' in self.event_id:
                 self.btn_train.config(state=tk.NORMAL)
             else:
                 self.btn_train.config(state=tk.DISABLED)
                 
-            # Enable Predict if we have Unknown labels (or if user wants to force it)
             if 'Unknown' in self.event_id:
                 self.btn_predict.config(state=tk.NORMAL)
             else:
-                # Some eval files might not have 783, but we might want to predict anyway
-                # For now, keep disabled unless 783 is found
                 self.btn_predict.config(state=tk.DISABLED)
 
         except Exception as e:
@@ -139,14 +123,12 @@ class BCIAnalysisApp:
         raw_data = self.raw.get_data() * 1e6
         return BCIMath.butter_bandpass_filter(raw_data, 8.0, 30.0, self.fs, order=4)
 
-    # --- ANALYSIS METHODS ---
     def run_erd_ers(self):
         if self.raw is None: return
         data = self.get_filtered_data()
-        # Only analyze labeled data
         labeled_ids = {k: v for k, v in self.event_id.items() if k in ['Left Hand', 'Right Hand']}
         
-        times, results = BCIMath.compute_erd_ers(
+        times, results = BCIMath.erders(
             data, self.events, labeled_ids, self.fs, 
             tmin=-1.5, tmax=4.5, ref_tmin=-1.0, ref_tmax=0.0
         )
@@ -167,13 +149,9 @@ class BCIAnalysisApp:
         labeled_ids = {k: v for k, v in self.event_id.items() if k in ['Left Hand', 'Right Hand']}
         
         try:
-            # Calculate Filters (W)
-            W = BCIMath.compute_csp_filters(data, self.events, labeled_ids, self.fs, 0.5, 3.5)
-            
-            # Calculate Patterns (A = inv(W).T)
+            W = BCIMath.gen_csp(data, self.events, labeled_ids, self.fs, 0.5, 3.5)
             patterns = scipy.linalg.pinv(W).T
             
-            # Plot
             fig, axes = plt.subplots(1, 2, figsize=(8, 4))
             info = self.raw.info
             mne.viz.plot_topomap(patterns[0, :], info, axes=axes[0], show=False, contours=0, sensors=True, names=self.raw.ch_names)
@@ -185,7 +163,6 @@ class BCIAnalysisApp:
         except Exception as e:
             messagebox.showerror("CSP Error", str(e))
 
-    # --- MACHINE LEARNING METHODS ---
     def train_model(self):
         """Trains CSP + Neural Network and shows performance."""
         if self.raw is None: return
@@ -194,19 +171,17 @@ class BCIAnalysisApp:
             data = self.get_filtered_data()
             labeled_ids = {k: v for k, v in self.event_id.items() if k in ['Left Hand', 'Right Hand']}
             
+            # 1. Train Main Model
             acc, kappa, cm, loss_curve, total_trials = self.classifier.train_model(data, self.events, labeled_ids, self.fs)
             
             self.btn_save.config(state=tk.NORMAL)
 
-            # --- PERFORMANCE EVALUATION ---
-            
-            # A. Confusion Matrix (10-fold CV)
-            # Already done in classifier
-            
-            # B. Accuracy Over Time (Sliding Window)
-            # Note: The sliding window is not implemented in the classifier, but we can keep it or remove for simplicity.
-            # For now, let's plot the results we have:
-            fig = plt.figure(figsize=(10, 8))
+            # 2. Run Sliding Window Analysis (New Feature)
+            print("Running Sliding Window Analysis (this may take 10-20 seconds)...")
+            t_course, acc_course = self.classifier.perform_sliding_window_analysis(data, self.events, labeled_ids, self.fs)
+
+            # 3. Plotting Report
+            fig = plt.figure(figsize=(12, 8))
             gs = fig.add_gridspec(2, 2)
             
             # Plot 1: Confusion Matrix
@@ -229,13 +204,25 @@ class BCIAnalysisApp:
             )
             ax2.text(0.1, 0.5, text_info, fontsize=11, verticalalignment='center')
 
-            # Plot 3: Loss Curve (Training History)
-            ax3 = fig.add_subplot(gs[1, :])
+            # Plot 3: Loss Curve
+            ax3 = fig.add_subplot(gs[1, 0])
             ax3.plot(loss_curve, color='red')
-            ax3.set_title("Neural Network Training Loss")
+            ax3.set_title("Training Loss (Convergence)")
             ax3.set_xlabel("Iterations")
             ax3.set_ylabel("Loss")
             ax3.grid(True)
+
+            # Plot 4: Accuracy Over Time (Sliding Window)
+            ax4 = fig.add_subplot(gs[1, 1])
+            ax4.plot(t_course, acc_course, 'o-', color='purple', linewidth=2, markersize=4)
+            ax4.axhline(0.5, color='gray', linestyle='--', label='Chance')
+            ax4.axvline(0, color='green', linestyle='-', label='Cue')
+            ax4.set_ylim(0, 1.05)
+            ax4.set_xlabel("Time (s)")
+            ax4.set_ylabel("Accuracy")
+            ax4.set_title("Performance Over Time")
+            ax4.legend()
+            ax4.grid(True, alpha=0.3)
             
             plt.tight_layout()
             plt.show()
@@ -268,7 +255,6 @@ class BCIAnalysisApp:
             messagebox.showerror("Load Error", str(e))
 
     def predict_unknowns(self):
-        """Predicts class for event 783 (Unknown) in current file."""
         if not hasattr(self.classifier, 'trained_clf') or self.classifier.trained_clf is None:
             messagebox.showwarning("No Model", "Please train or load a model first.")
             return
@@ -281,9 +267,8 @@ class BCIAnalysisApp:
             data = self.get_filtered_data()
             id_unknown = self.event_id['Unknown']
             
-            preds, count_left, count_right = self.classifier.predict_unknowns(data, self.events, id_unknown, self.fs)
+            preds, count_left, count_right = self.classifier.forward_prop(data, self.events, id_unknown, self.fs)
             
-            # Visualize predictions
             plt.figure(figsize=(10, 4))
             plt.plot(preds, 'o-', label='Prediction (0=Left, 1=Right)')
             plt.yticks([0, 1], ['Left', 'Right'])

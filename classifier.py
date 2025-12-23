@@ -28,7 +28,7 @@ class BCIClassifier:
         y_train = np.concatenate((np.zeros(len(epochs_L)), np.ones(len(epochs_R))))
 
         # 2. Train CSP Filters
-        W = BCIMath.compute_csp_filters(data, events, event_ids, fs, tmin, tmax)
+        W = BCIMath.gen_csp(data, events, event_ids, fs, tmin, tmax)
 
         # 3. Extract Features (Log Variance)
         features_train = BCIMath.extract_log_var_features(X_train, W)
@@ -66,6 +66,37 @@ class BCIClassifier:
 
         return acc, kappa, cm, loss_curve, len(y_train)
 
+    def perform_sliding_window_analysis(self, data, events, event_ids, fs):
+        """
+        Runs the sliding window analysis using the trained NN architecture.
+        Uses a wider time window (-1.5 to 4.5s) to show pre-cue and post-cue.
+        """
+        if self.trained_clf is None:
+            raise ValueError("Model not trained yet.")
+
+        id_left = event_ids['Left Hand']
+        id_right = event_ids['Right Hand']
+
+        # Get Wider Epochs
+        ep_L_wide, _ = BCIMath.get_epochs_manual(data, events, id_left, fs, -1.5, 4.5)
+        ep_R_wide, _ = BCIMath.get_epochs_manual(data, events, id_right, fs, -1.5, 4.5)
+        
+        X_wide = np.concatenate((ep_L_wide, ep_R_wide), axis=0)
+        y_wide = np.concatenate((np.zeros(len(ep_L_wide)), np.ones(len(ep_R_wide))))
+
+        # Run Analysis
+        # We pass self.trained_clf as the template. 
+        # BCIMath will clone it, so the weights are reset for each window cross-validation
+        t_course, acc_course = BCIMath.calculate_acc(
+            X_wide, y_wide, self.trained_W, fs, 
+            t_start_epoch=-1.5, 
+            clf_template=self.trained_clf, 
+            window_size=1.0, 
+            step=0.1
+        )
+        
+        return t_course, acc_course
+
     def save_model(self, file_path):
         if self.trained_clf is None:
             raise ValueError("No trained model to save")
@@ -87,7 +118,7 @@ class BCIClassifier:
         self.trained_clf = model_data['clf']
         self.class_labels = model_data['labels']
 
-    def predict_unknowns(self, data, events, event_id_unknown, fs, tmin=0.5, tmax=3.5):
+    def forward_prop(self, data, events, event_id_unknown, fs, tmin=0.5, tmax=3.5):
         if self.trained_clf is None:
             raise ValueError("No model loaded")
 
