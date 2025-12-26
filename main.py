@@ -8,14 +8,13 @@ from sklearn.metrics import ConfusionMatrixDisplay
 from scipy.stats import skew, kurtosis
 from erdcsp import ANALYSIS as ANALYSIS
 from classifier import CLASSIFIER as CLASSIFIER
+classifier = CLASSIFIER()
 
 raw = None
 filename = None
 events = None
 event_id = None
 fs = 250.0
-classifier = CLASSIFIER()
-
 raw_eval = None
 events_eval = None
 btn_load_eval = None
@@ -416,8 +415,6 @@ def predict_unknowns():
 
 def main(root):
     global btn_load, lbl_status, btn_erd, btn_csp, btn_train, btn_save, btn_load_model, btn_predict, txt_low, txt_high, lbl_eval_status, btn_load_eval 
-
-    # root.title("ASN - EEG Analysis")
     root.geometry("500x750")
 
     tk.Label(root, text="ASN - EEG Analysis", font=("Arial", 14, "bold")).pack(pady=10)
@@ -429,11 +426,8 @@ def main(root):
     btn_load.pack(fill="x")
     lbl_status = tk.Label(frame_load, text="-", fg="gray")
     lbl_status.pack()
-
     frame_analysis = tk.LabelFrame(root, text="Analysis", padx=10, pady=5)
     frame_analysis.pack(fill="x", padx=10, pady=5)
-
-    
     frame_freq = tk.Frame(frame_analysis)
     frame_freq.pack(fill="x", pady=5)
     
