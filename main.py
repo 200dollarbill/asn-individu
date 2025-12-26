@@ -15,6 +15,11 @@ events = None
 event_id = None
 fs = 250.0
 classifier = CLASSIFIER()
+
+raw_eval = None
+events_eval = None
+btn_load_eval = None
+lbl_eval_status = None
 txt_low = None
 txt_high = None
 btn_load = None
@@ -287,7 +292,7 @@ def train_model():
         text_info = (
             f"Neural Network Performance\n"
             f"Topology: Input [2] -> [20, 10] -> Output [2]\n"
-            f"Total Trials: {total_trials}\n\n"
+            f"Total Epochs: {total_trials}\n\n"
             f"Overall Accuracy: {acc:.2%}\n"
         )
         ax2.text(0.1, 0.5, text_info, fontsize=11, verticalalignment='center')
@@ -378,7 +383,7 @@ def predict_unknowns():
 def main(root):
     global btn_load, lbl_status, btn_erd, btn_csp, btn_train, btn_save, btn_load_model, btn_predict, txt_low, txt_high
 
-    root.title("ASN - EEG Analysis")
+    # root.title("ASN - EEG Analysis")
     root.geometry("500x750")
 
     tk.Label(root, text="ASN - EEG Analysis", font=("Arial", 14, "bold")).pack(pady=10)

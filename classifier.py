@@ -13,44 +13,63 @@ class CLASSIFIER:
         self.trained_clf = None
         self.class_labels = None
 
-    def train_model(self, data, events, event_ids, fs, tmin=0.5, tmax=3.5):
+    def train_model(self, data_train, events_train, event_ids, fs, 
+                    data_eval=None, events_eval=None, tmin=0.5, tmax=3.5):
         id_left = event_ids['Left Hand']
         id_right = event_ids['Right Hand']
-        epochs_L, _ = ANALYSIS.get_epochs_manual(data, events, id_left, fs, tmin, tmax)
-        epochs_R, _ = ANALYSIS.get_epochs_manual(data, events, id_right, fs, tmin, tmax)
+
+        epochs_L, _ = ANALYSIS.get_epochs_manual(data_train, events_train, id_left, fs, tmin, tmax)
+        epochs_R, _ = ANALYSIS.get_epochs_manual(data_train, events_train, id_right, fs, tmin, tmax)
 
         X_train = np.concatenate((epochs_L, epochs_R), axis=0)
         y_train = np.concatenate((np.zeros(len(epochs_L)), np.ones(len(epochs_R))))
-        W = ANALYSIS.gen_csp(data, events, event_ids, fs, tmin, tmax)
+        W = ANALYSIS.gen_csp(data_train, events_train, event_ids, fs, tmin, tmax)
         features_train = ANALYSIS.extract_log_var_features(X_train, W)
+        
         ann_clf = make_pipeline(
             StandardScaler(),
-            MLPClassifier(
-                hidden_layer_sizes=(20, 10),
-                activation='relu',
-                solver='adam',
-                alpha=0.001,
-                max_iter=1000,
-                random_state=42
-            )
+            MLPClassifier(hidden_layer_sizes=(20, 10), activation='relu', solver='adam', 
+                          alpha=0.001, max_iter=1000, random_state=42)
         )
 
-        print("Training Neural Network...")
+        print("Training Neural Network on File 1...")
         ann_clf.fit(features_train, y_train)
+
         self.trained_W = W
         self.trained_clf = ann_clf
         self.class_labels = ['Left Hand', 'Right Hand']
-
-        cv = StratifiedKFold(n_splits=10, shuffle=True, random_state=42)
-        y_pred_cv = cross_val_predict(ann_clf, features_train, y_train, cv=cv)
-
-        cm = confusion_matrix(y_train, y_pred_cv)
-        acc = np.mean(y_pred_cv == y_train)
-        kappa = cohen_kappa_score(y_train, y_pred_cv)
-
         loss_curve = ann_clf.named_steps['mlpclassifier'].loss_curve_
 
-        return acc, kappa, cm, loss_curve, len(y_train)
+        if data_eval is not None and events_eval is not None:
+            print("Evaluating on File 2 (Separate Validation File)...")
+            ep_L_eval, _ = ANALYSIS.get_epochs_manual(data_eval, events_eval, id_left, fs, tmin, tmax)
+            ep_R_eval, _ = ANALYSIS.get_epochs_manual(data_eval, events_eval, id_right, fs, tmin, tmax)
+            
+            if len(ep_L_eval) == 0 or len(ep_R_eval) == 0:
+                raise ValueError("Evaluation file missing Left or Right trials.")
+
+            X_eval = np.concatenate((ep_L_eval, ep_R_eval), axis=0)
+            y_eval = np.concatenate((np.zeros(len(ep_L_eval)), np.ones(len(ep_R_eval))))
+            features_eval = ANALYSIS.extract_log_var_features(X_eval, W)
+            y_pred = ann_clf.predict(features_eval)
+            
+            acc = np.mean(y_pred == y_eval)
+            kappa = cohen_kappa_score(y_eval, y_pred)
+            cm = confusion_matrix(y_eval, y_pred)
+            total_trials = len(y_eval)
+            
+        else:
+            print("Evaluating using 10-Fold CV on Training File...")
+            cv = StratifiedKFold(n_splits=10, shuffle=True, random_state=42)
+            y_pred_cv = cross_val_predict(ann_clf, features_train, y_train, cv=cv)
+
+            cm = confusion_matrix(y_train, y_pred_cv)
+            acc = np.mean(y_pred_cv == y_train)
+            kappa = cohen_kappa_score(y_train, y_pred_cv)
+            total_trials = len(y_train)
+
+        return acc, kappa, cm, loss_curve, total_trials
+
 
     def perform_sliding_window_analysis(self, data, events, event_ids, fs):
         if self.trained_clf is None:

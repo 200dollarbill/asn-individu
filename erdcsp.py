@@ -38,6 +38,7 @@ class ANALYSIS:
                 epochs.append(epoch)
                 labels.append(evt[2])
 
+        print(len(epochs), "epochs extracted for event ID(s):", event_id)
         return np.array(epochs), np.array(labels)
 
     @staticmethod
