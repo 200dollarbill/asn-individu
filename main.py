@@ -87,6 +87,31 @@ def load_data():
     except Exception as e:
         messagebox.showerror("Error", str(e))
 
+def load_eval_data():
+    global raw_eval, events_eval, fs, lbl_eval_status
+
+    file_path = filedialog.askopenfilename(filetypes=[("GDF files", "*.gdf")])
+    if not file_path: return
+
+    try:
+        raw_temp = mne.io.read_raw_gdf(file_path, preload=True, verbose=False)       
+        target_channels = ['EEG:C3', 'EEG:Cz', 'EEG:C4']
+        existing_chs = raw_temp.ch_names
+        to_pick = [ch for ch in target_channels if ch in existing_chs]
+        raw_temp.pick_channels(to_pick)
+        rename_dict = {ch: ch.replace('EEG:', '') for ch in to_pick}
+        raw_temp.rename_channels(rename_dict)
+        raw_temp.set_montage(mne.channels.make_standard_montage('standard_1020'))
+        events_map, _ = mne.events_from_annotations(raw_temp, verbose=False)
+        raw_eval = raw_temp
+        events_eval = events_map
+        fname = file_path.split('/')[-1]
+        lbl_eval_status.config(text=f"Eval File: {fname}", fg="blue")
+        
+    except Exception as e:
+        messagebox.showerror("Eval Load Error", str(e))
+
+
 
 def get_filtered_data():
     global raw, fs, txt_low, txt_high
@@ -101,6 +126,8 @@ def get_filtered_data():
         
     raw_data = raw.get_data() * 1e6
     return ANALYSIS.butter_bandpass_filter(raw_data, l_cut, h_cut, fs, order=4)
+
+
 def run_erd_ers():
     global raw, events, event_id, fs
     if raw is None:
@@ -261,66 +288,73 @@ def run_csp_plot():
     except Exception as e:
         messagebox.showerror("CSP Error", str(e))
 
-
 def train_model():
     global raw, events, event_id, fs, classifier, btn_save
-    if raw is None:
-        return
+    global raw_eval, events_eval, txt_low, txt_high
 
+    if raw is None: return
     try:
-        data = get_filtered_data()
+        data_train = get_filtered_data() 
         labeled_ids = {k: v for k, v in event_id.items() if k in ['Left Hand', 'Right Hand']}
-
-        acc, kappa, cm, loss_curve, total_trials = classifier.train_model(data, events, labeled_ids, fs)
+        data_eval = None
+        if raw_eval is not None:
+            try:
+                l_cut = float(txt_low.get())
+                h_cut = float(txt_high.get())
+            except:
+                l_cut, h_cut = 8.0, 30.0
+            
+            raw_eval_data = raw_eval.get_data() * 1e6
+            data_eval = ANALYSIS.butter_bandpass_filter(raw_eval_data, l_cut, h_cut, fs, order=4)
+        acc, kappa, cm, loss_curve, total_trials = classifier.train_model(data_train, events, labeled_ids, fs, data_eval=data_eval, events_eval=events_eval)
 
         btn_save.config(state=tk.NORMAL)
-
-        id_left = labeled_ids['Left Hand']
-        id_right = labeled_ids['Right Hand']
-        t_course, acc_course = classifier.perform_sliding_window_analysis(data, events, labeled_ids, fs)
-
+        if data_eval is not None:
+            data_vis = data_eval
+            events_vis = events_eval
+            title_suffix = "(Evaluation File)"
+        else:
+            data_vis = data_train
+            events_vis = events
+            title_suffix = "(Cross-Validation on Train File)"
+        t_course, acc_course = classifier.perform_sliding_window_analysis(data_vis, events_vis, labeled_ids, fs)
         fig = plt.figure(figsize=(12, 8))
         gs = fig.add_gridspec(2, 2)
 
         ax1 = fig.add_subplot(gs[0, 0])
         disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=['Left', 'Right'])
         disp.plot(cmap='Purples', ax=ax1, colorbar=False)
-        ax1.set_title(f"ANN Confusion Matrix\nAcc: {acc:.2%} | Kappa: {kappa:.2f}")
+        ax1.set_title(f"Confusion Matrix {title_suffix}\nAcc: {acc:.2%} | Kappa: {kappa:.2f}")
 
         ax2 = fig.add_subplot(gs[0, 1])
         ax2.axis('off')
         text_info = (
             f"Neural Network Performance\n"
-            f"Topology: Input [2] -> [20, 10] -> Output [2]\n"
-            f"Total Epochs: {total_trials}\n\n"
+            f"Mode: {'Train/Test Split' if data_eval is not None else '10-Fold CV'}\n"
+            f"Evaluated on: {total_trials} Trials\n"
             f"Overall Accuracy: {acc:.2%}\n"
         )
         ax2.text(0.1, 0.5, text_info, fontsize=11, verticalalignment='center')
 
         ax3 = fig.add_subplot(gs[1, 0])
         ax3.plot(loss_curve, color='red')
-        ax3.set_title("Training Loss (Convergence)")
-        ax3.set_xlabel("Iterations")
-        ax3.set_ylabel("Loss")
+        ax3.set_title("Training Loss (File 1)") 
         ax3.grid(True)
 
         ax4 = fig.add_subplot(gs[1, 1])
-        ax4.plot(t_course, acc_course, 'o-', color='purple', linewidth=2, markersize=4)
-        ax4.axhline(0.5, color='gray', linestyle='--', label='Chance')
-        ax4.axvline(0, color='green', linestyle='-', label='Cue')
+        ax4.plot(t_course, acc_course, 'o-', color='purple', linewidth=2)
+        ax4.axhline(0.5, color='gray', linestyle='--')
+        ax4.axvline(0, color='green', linestyle='-')
         ax4.set_ylim(0, 1.05)
-        ax4.set_xlabel("Time (s)")
-        ax4.set_ylabel("Accuracy")
-        ax4.set_title("Performance Over Time")
-        ax4.legend()
-        ax4.grid(True, alpha=0.3)
+        ax4.set_title(f"Accuracy Over Time {title_suffix}")
+        ax4.grid(True)
 
         plt.tight_layout()
         plt.show()
 
     except Exception as e:
         messagebox.showerror("Training Error", str(e))
-
+    
 
 def save_model():
     global classifier
@@ -381,7 +415,7 @@ def predict_unknowns():
         messagebox.showerror("Prediction Error", str(e))
 
 def main(root):
-    global btn_load, lbl_status, btn_erd, btn_csp, btn_train, btn_save, btn_load_model, btn_predict, txt_low, txt_high
+    global btn_load, lbl_status, btn_erd, btn_csp, btn_train, btn_save, btn_load_model, btn_predict, txt_low, txt_high, lbl_eval_status, btn_load_eval 
 
     # root.title("ASN - EEG Analysis")
     root.geometry("500x750")
@@ -423,7 +457,12 @@ def main(root):
     btn_csp = tk.Button(frame_analysis, text="CSP Plot", command=run_csp_plot, state=tk.DISABLED)
     btn_csp.pack(fill="x", pady=2)
     frame_ml = tk.LabelFrame(root, text="Feature Extraction", padx=10, pady=5)
-    frame_ml.pack(fill="x", padx=10, pady=5)
+    frame_ml.pack(fill="x", padx=10, pady=5)    
+
+    btn_load_eval = tk.Button(frame_ml, text="Evaluation for Training", command=load_eval_data)
+    btn_load_eval.pack(fill="x", pady=2)
+    lbl_eval_status = tk.Label(frame_ml, text="No Eval File Loaded (Will use CV)", fg="gray", font=("Arial", 8))
+    lbl_eval_status.pack()
 
     btn_train = tk.Button(frame_ml, text="Train Model", command=train_model, state=tk.DISABLED)
     btn_train.pack(fill="x", pady=2)
